@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: "rabbitmq:3.9-management"
+    ports:
+      - "5672:5672"   # Puerto para los servicios
+      - "15672:15672" # Interfaz de gestión web
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+
+  central-server:
+    build: ./services/central_server
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - db
+    environment:
+      # Todas las variables de entorno que necesite el servidor
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
+      - BROKER_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+
+  processing-node:
+    build: ./services/processing_node
+    # No se exponen puertos, solo se comunica internamente
+    depends_on:
+      - rabbitmq
+    deploy:
+      replicas: 3 # <-- ¡Aquí está la magia! Lanza 3 instancias de este servicio
+
+volumes:
+  postgres_data:
