@@ -1,6 +1,3 @@
-# servicios/processing_node/Dockerfile
-
-# Usamos la misma estructura que el otro nodo.
 FROM python:3.11-slim
 
 WORKDIR /app
