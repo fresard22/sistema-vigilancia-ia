@@ -27,11 +27,14 @@ tracked_people = defaultdict(lambda: {'last_pos': None, 'last_time': None, 'is_a
 # --- 4. Bloque de Conexión SIMPLE (SIN TLS) ---
 # Esta es la sección que hemos simplificado radicalmente.
 # =================================================================
-BROKER_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+#BROKER_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+BROKER_HOST="rabbitmq"
 BROKER_PORT = 5672 # <-- El puerto normal, no el 5671 de TLS
 QUEUE_NAME = 'video_frames'
-RABBITMQ_USER = os.getenv('RABBITMQ_USER','usuario')
-RABBITMQ_PASS = os.getenv('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
+#RABBITMQ_USER = os.getenv('RABBITMQ_USER','usuario')
+RABBITMQ_USER="usuario"
+#RABBITMQ_PASS = os.getenv('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
+RABBITMQ_PASS="pass"
 
 # Simplemente creamos las credenciales de usuario y contraseña
 credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
