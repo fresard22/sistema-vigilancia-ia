@@ -6,10 +6,13 @@ import os
 import ssl # Importamos la biblioteca ssl
 
 # --- 1. Configuración de RabbitMQ SEGURA ---
-BROKER_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+#BROKER_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+BROKER_HOST = "rabbitmq"
 QUEUE_NAME = 'video_frames'
-RABBITMQ_USER = os.getenv('RABBITMQ_USER','usuario')
-RABBITMQ_PASS = os.getenv('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
+#RABBITMQ_USER = os.getenv('RABBITMQ_USER','usuario')
+RABBITMQ_USER="usuario"
+RABBITMQ_PASS="pass"
+#RABBITMQ_PASS = os.getenv('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
 BROKER_PORT = 5672 # <-- El puerto normal, no el 5671
 
 # Simplemente creamos las credenciales
