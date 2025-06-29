@@ -64,7 +64,6 @@ services:
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix"
       - ./rabbitmq_certs:/app/rabbitmq_certs:ro
-
 #volumes:
 #  postgres_data:
  #   depends_on:
