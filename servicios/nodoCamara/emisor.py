@@ -1,60 +1,65 @@
 import cv2
 import pika
+import traceback
 import time
+import os
+import ssl # Importamos la biblioteca ssl
 
-# --- 1. Configuración de RabbitMQ ---
-BROKER_HOST = 'localhost'
+# --- 1. Configuración de RabbitMQ SEGURA ---
+BROKER_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
 QUEUE_NAME = 'video_frames'
+RABBITMQ_USER = os.getenv('RABBITMQ_USER','usuario')
+RABBITMQ_PASS = os.getenv('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
+BROKER_PORT = 5672 # <-- El puerto normal, no el 5671
 
-# Conexión al broker
-connection = pika.BlockingConnection(pika.ConnectionParameters(host=BROKER_HOST))
-channel = connection.channel()
+# Simplemente creamos las credenciales
+credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
 
-# Se asegura de que la cola exista. Si no, la crea.
-channel.queue_declare(queue=QUEUE_NAME)
-print(f"Conectado a RabbitMQ y la cola '{QUEUE_NAME}' está lista.")
+try:
+    # La conexión no tiene NADA de SSL. Es directa.
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(
+            host=BROKER_HOST,
+            port=BROKER_PORT,
+            credentials=credentials
+        )
+    )
+    channel = connection.channel()
+    channel.queue_declare(queue=QUEUE_NAME)
+    print("--- ÉXITO --- Conexión SIMPLE a RabbitMQ establecida.")
 
-# --- 2. Inicializar la captura de video ---
+except Exception as e:
+    print("\n--- ERROR DETALLADO ---")
+    traceback.print_exc()
+    print("-----------------------\n")
+    exit()
+# --- El resto del script (captura de cámara, envío de frames) es exactamente el mismo ---
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
     print("Error: No se pudo abrir la cámara.")
     exit()
 
-print("Cámara iniciada. Enviando frames... Presiona Ctrl+C para salir.")
+print("Cámara iniciada. Enviando frames de forma segura... Presiona Ctrl+C para salir.")
 
 try:
-    # --- 3. Bucle principal para capturar y enviar ---
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("No se pudo recibir el frame. Saliendo...")
             break
-
-        # --- 4. Codificar el frame para el envío ---
-        # No podemos enviar el objeto 'frame' directamente. Lo codificamos a formato JPEG.
-        # Esto reduce el tamaño y lo convierte en una secuencia de bytes.
+        
         result, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         if not result:
             continue
 
-        # --- 5. Publicar el frame en la cola de RabbitMQ ---
-        channel.basic_publish(
-            exchange='',          # Usamos el exchange por defecto
-            routing_key=QUEUE_NAME, # El nombre de nuestra cola
-            body=buffer.tobytes() # El cuerpo del mensaje son los bytes de la imagen
-        )
-        
+        channel.basic_publish(exchange='', routing_key=QUEUE_NAME, body=buffer.tobytes())
         print(f"Frame enviado ({len(buffer.tobytes())} bytes)")
-        
-        # Opcional: Controlar la tasa de frames para no saturar
-        time.sleep(0.05) # ~20 FPS
+        time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("Programa interrumpido por el usuario.")
-
+    print("Programa interrumpido.")
 finally:
-    # --- 6. Liberar recursos ---
-    print("Cerrando programa y conexiones...")
+    print("Cerrando programa y conexión segura...")
     cap.release()
-    connection.close()
+    if 'connection' in locals() and connection.is_open:
+        connection.close()
