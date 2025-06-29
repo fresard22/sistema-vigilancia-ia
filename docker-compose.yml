@@ -19,19 +19,19 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-  db:
-    image: postgres:13
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASS}
-      - POSTGRES_DB=${DB_NAME}
+  #db:
+    #image: postgres:13
+    #volumes:
+    #  - postgres_data:/var/lib/postgresql/data/
+   # environment:
+   #   - POSTGRES_USER=${DB_USER}
+   #   - POSTGRES_PASSWORD=${DB_PASS}
+   #   - POSTGRES_DB=${DB_NAME}
 
-  central-server:
-    build: ./servicios/serverCentral
-    ports:
-      - "8000:8000"
+  #central-server:
+    #build: ./servicios/serverCentral
+    #ports:
+    #  - "8000:8000"
   # Servicio 2: El nodo que captura el video de la cámara
   camera-node:
     build: ./servicios/nodoCamara # Le dice a Compose que construya la imagen desde su Dockerfile
@@ -49,28 +49,32 @@ services:
 
   # Servicio 3: El nodo que procesa el video con IA
   processing-node:
-    build: ./servicios/receptor
-    # No se exponen puertos, solo se comunica internamente
-    depends_on:
-      - rabbitmq
-    deploy:
-      replicas: 3 # <-- ¡Aquí está la magia! Lanza 3 instancias de este servicio
-
-volumes:
-  postgres_data:
     build: ./servicios/nodoProcesamiento
+    # No se exponen puertos, solo se comunica internamente
     depends_on:
       rabbitmq:
         condition: service_healthy
+    deploy:
+      replicas: 3 # <-- ¡Aquí está la magia! Lanza 3 instancias de este servicio
     environment:
+      - "DISPLAY"
+    volumes:
+      - "/tmp/.X11-unix:/tmp/.X11-unix"
+
+#volumes:
+#  postgres_data:
+ #   depends_on:
+  #    rabbitmq:
+   #     condition: service_healthy
+   # environment:
       # Las mismas variables para la conexión
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASS=${RABBITMQ_PASS}
+    #  - RABBITMQ_HOST=rabbitmq
+    # - RABBITMQ_USER=${RABBITMQ_USER}
+    #- RABBITMQ_PASS=${RABBITMQ_PASS}
       # === PARA MOSTRAR LA VENTANA DE OPENCV (DEBUG) ===
       # Esto es para sistemas Linux (Fedora). Permite que la GUI del contenedor
       # se muestre en el escritorio del anfitrión.
-      - "DISPLAY" 
-    volumes:
+     # - "DISPLAY" 
+    #volumes:
       # Comparte el socket de X11 para la comunicación de la GUI
-      - "/tmp/.X11-unix:/tmp/.X11-unix"
+      #- "/tmp/.X11-unix:/tmp/.X11-unix"
