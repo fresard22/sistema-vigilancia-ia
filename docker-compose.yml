@@ -53,6 +53,7 @@ services:
       # >> ¡CAMBIO CLAVE! Añadir este volumen para que el cliente pueda encontrar los certificados
       - ./rabbitmq:/etc/rabbitmq
       - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./output:/app/output
     depends_on:
       rabbitmq-1:
         condition: service_healthy

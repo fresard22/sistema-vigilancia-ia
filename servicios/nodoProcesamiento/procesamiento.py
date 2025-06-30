@@ -5,7 +5,7 @@ import numpy as np
 from ultralytics import YOLO
 import time
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 import traceback
 import ssl
 
@@ -20,6 +20,26 @@ print("--- [PROCESAMIENTO] Modelo cargado exitosamente. ---")
 SPEED_THRESHOLD = 50
 PROXIMITY_THRESHOLD = 50
 tracked_people = defaultdict(lambda: {'last_pos': None, 'last_time': None, 'is_alert': False})
+
+# Parámetros del video a guardar
+VIDEO_FPS = 10.0  # Frames por segundo del video guardado
+VIDEO_WIDTH = 640 # Ancho del video
+VIDEO_HEIGHT = 480 # Alto del video
+RECORDING_SECONDS = 5 # Duración de la grabación después de la alerta
+
+# Búfer para guardar los segundos previos al evento
+PRE_EVENT_BUFFER_SECONDS = 3
+buffer_size = int(VIDEO_FPS * PRE_EVENT_BUFFER_SECONDS)
+frame_buffer = deque(maxlen=buffer_size)
+
+# Variables para controlar el estado de la grabación
+is_recording = False
+recording_end_time = 0
+video_writer = None
+
+# Asegurarse de que la carpeta de salida exista
+os.makedirs('output', exist_ok=True)
+print("--- [PROCESAMIENTO] Variables de grabación inicializadas. ---")
 
 # --- CONFIGURACIÓN Y CONEXIÓN ---
 print("--- [PROCESAMIENTO] Leyendo configuración de entorno... ---")
@@ -71,7 +91,7 @@ print("--- [PROCESAMIENTO] ¡Conexión exitosa con RabbitMQ! ---")
 
 # --- FUNCIÓN CALLBACK ---
 def callback(ch, method, properties, body):
-    global tracked_people
+    global tracked_people, frame_buffer, is_recording, recording_end_time, video_writer
     
     # ... (toda tu lógica de IA se mantiene igual)
     nparr = np.frombuffer(body, np.uint8)
@@ -79,6 +99,8 @@ def callback(ch, method, properties, body):
 
     if frame is not None:
         current_time = time.time()
+        frame = cv2.resize(frame, (VIDEO_WIDTH,VIDEO_HEIGHT))
+        frame_buffer.append(frame.copy())
         results = model.track(frame, persist=True, verbose=False)
 
         current_frame_detections = {}
@@ -133,6 +155,35 @@ def callback(ch, method, properties, body):
         stale_ids = [tid for tid, data in tracked_people.items() if current_time - data['last_time'] > 5]
         for tid in stale_ids:
             del tracked_people[tid]
+        
+        if alert_ids and not is_recording:
+            is_recording = True
+            recording_end_time = time.time() + RECORDING_SECONDS
+            
+            # Crear un nombre de archivo único
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            filename = f"output/agresion-{timestamp}.avi"
+            
+            # Inicializar el escritor de video
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            video_writer = cv2.VideoWriter(filename, fourcc, VIDEO_FPS, (VIDEO_WIDTH, VIDEO_HEIGHT))
+            
+            print(f"--- [ALERTA DETECTADA] Empezando a grabar en {filename} ---")
+            
+            # Escribir los frames del búfer (el pre-evento)
+            for f in frame_buffer:
+                video_writer.write(f)
+
+        # Si estamos en modo grabación, seguimos escribiendo frames
+        if is_recording:
+            video_writer.write(frame)
+            
+            # Si ya pasaron los 5 segundos, detenemos la grabación
+            if time.time() >= recording_end_time:
+                is_recording = False
+                video_writer.release()
+                video_writer = None
+                print(f"--- [GRABACIÓN FINALIZADA] Video guardado. ---")
 
         # En un entorno de servidor real, esta línea debería ser removida o manejada de otra forma.
         cv2.imshow('Processing Node - Deteccion de Agresion V1', frame)
@@ -150,4 +201,8 @@ finally:
     if 'connection' in locals() and connection.is_open:
         connection.close()
     cv2.destroyAllWindows()
+     # >> NUEVO: Asegurarse de cerrar el archivo de video si el script se detiene
+    if video_writer is not None:
+        video_writer.release()
+        print("--- [PROCESAMIENTO] Grabación de video finalizada por cierre de script. ---")
 
