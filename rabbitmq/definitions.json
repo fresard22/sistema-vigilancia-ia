@@ -1,0 +1,35 @@
+{
+  "users": [
+    {
+      "name": "camera-app-client",
+      "password": "ThisPasswordWillBeHashedAndIsNeverUsed123!",
+      "tags": ""
+    },
+    {
+      "name": "admin",
+      "password": "adminpass",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "camera-app-client",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ]
+}

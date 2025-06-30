@@ -1,5 +1,5 @@
 opencv-python
-pika
+pika>=1.2.0
 numpy
 ultralytics
 torch

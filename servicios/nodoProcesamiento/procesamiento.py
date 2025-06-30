@@ -1,3 +1,4 @@
+# --- IMPORTS ---
 import cv2
 import pika
 import numpy as np
@@ -5,65 +6,74 @@ from ultralytics import YOLO
 import time
 import os
 from collections import defaultdict
-import traceback # Usado para imprimir errores detallados
+import traceback
+import ssl
+
+print("--- [PROCESAMIENTO] Script iniciado. ---")
 
 # --- 1. Cargar el modelo de IA (YOLOv8) ---
-# Esta parte no cambia.
-print("Cargando modelo de IA (YOLOv8)...")
+print("--- [PROCESAMIENTO] Cargando modelo de IA... ---")
 model = YOLO('yolov8n.pt')
-print("Modelo cargado exitosamente.")
+print("--- [PROCESAMIENTO] Modelo cargado exitosamente. ---")
 
-# --- 2. Configuración de Heurísticas de Agresión ---
-# Esta parte no cambia.
+# ... (El resto de la configuración no cambia)
 SPEED_THRESHOLD = 50
 PROXIMITY_THRESHOLD = 50
-
-# --- 3. Almacenamiento de datos de seguimiento ---
-# Esta parte no cambia.
 tracked_people = defaultdict(lambda: {'last_pos': None, 'last_time': None, 'is_alert': False})
 
+# --- CONFIGURACIÓN Y CONEXIÓN ---
+print("--- [PROCESAMIENTO] Leyendo configuración de entorno... ---")
+RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
+RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', 5671))
+QUEUE_NAME = 'camera_frames'
+CA_CERT_PATH = os.getenv('CA_CERT')
+CLIENT_CERT_PATH = os.getenv('CLIENT_CERT')
+CLIENT_KEY_PATH = os.getenv('CLIENT_KEY')
 
-# =================================================================
-# --- 4. Bloque de Conexión SIMPLE (SIN TLS) ---
-# Esta es la sección que hemos simplificado radicalmente.
-# =================================================================
-BROKER_HOST = os.environ.get('RABBITMQ_HOST', 'rabbitmq')
-BROKER_HOST="rabbitmq"
-BROKER_PORT = 5672 # <-- El puerto normal, no el 5671 de TLS
-QUEUE_NAME = 'video_frames'
-RABBITMQ_USER = os.environ.get('RABBITMQ_USER','usuario')
-RABBITMQ_PASS = os.environ.get('RABBITMQ_PASS','pass')# ¡Usa una contraseña segura!
+print(f"--- [PROCESAMIENTO] Host: {RABBITMQ_HOST}, Puerto: {RABBITMQ_PORT} ---")
 
-# Simplemente creamos las credenciales de usuario y contraseña
-credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+ssl_options = None
+if RABBITMQ_PORT == 5671:
+    print("--- [PROCESAMIENTO] Configurando conexión TLS... ---")
+    try:
+        context = ssl.create_default_context(cafile=CA_CERT_PATH)
+        context.load_cert_chain(certfile=CLIENT_CERT_PATH, keyfile=CLIENT_KEY_PATH)
+        ssl_options = pika.SSLOptions(context, server_hostname=RABBITMQ_HOST)
+        print("--- [PROCESAMIENTO] Contexto SSL creado exitosamente. ---")
+    except Exception as e:
+        print(f"--- [PROCESAMIENTO] Error fatal creando el contexto SSL: {e} ---")
+        exit(1)
 
-try:
-    # La conexión es directa, sin parámetros SSL
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(
-            host=BROKER_HOST,
-            port=BROKER_PORT,
-            credentials=credentials
-        )
-    )
-    channel = connection.channel()
-    channel.queue_declare(queue=QUEUE_NAME)
-    print("--- ÉXITO --- Conexión SIMPLE a RabbitMQ establecida.")
-    print(f"Esperando frames en la cola '{QUEUE_NAME}'...")
+connection = None
+attempts = 0
+print("--- [PROCESAMIENTO] Iniciando bucle de conexión... ---")
 
-except Exception as e:
-    print("\n--- ERROR DETALLADO EN LA CONEXIÓN ---")
-    traceback.print_exc()
-    print("---------------------------------------\n")
-    exit() # Detiene el script si la conexión falla
-# =================================================================
+# ... (El bucle de conexión con reintentos se mantiene igual)
+while attempts < 10 and not connection:
+    try:
+        params = pika.ConnectionParameters(
+            host=RABBITMQ_HOST, port=RABBITMQ_PORT, ssl_options=ssl_options,
+            credentials=pika.credentials.ExternalCredentials(), heartbeat=600,
+            blocked_connection_timeout=300)
+        connection = pika.BlockingConnection(params)
+    except Exception as e:
+        print(f"--- [PROCESAMIENTO] Falló el intento de conexión {attempts + 1} ---")
+        attempts += 1
+        time.sleep(5)
 
+if not connection:
+    print("--- [PROCESAMIENTO] No se pudo conectar. Saliendo. ---")
+    exit(1)
 
-# --- 5. Función Callback (Esta no cambia en absoluto) ---
-# Toda tu lógica de IA está segura aquí.
+channel = connection.channel()
+
+print("--- [PROCESAMIENTO] ¡Conexión exitosa con RabbitMQ! ---")
+
+# --- FUNCIÓN CALLBACK ---
 def callback(ch, method, properties, body):
     global tracked_people
     
+    # ... (toda tu lógica de IA se mantiene igual)
     nparr = np.frombuffer(body, np.uint8)
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -124,12 +134,12 @@ def callback(ch, method, properties, body):
         for tid in stale_ids:
             del tracked_people[tid]
 
+        # En un entorno de servidor real, esta línea debería ser removida o manejada de otra forma.
         cv2.imshow('Processing Node - Deteccion de Agresion V1', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             channel.stop_consuming()
     
     ch.basic_ack(delivery_tag=method.delivery_tag)
-
 # --- 6. Consumir mensajes de la cola (Esta parte no cambia) ---
 channel.basic_consume(queue=QUEUE_NAME, on_message_callback=callback)
 try:
@@ -140,3 +150,4 @@ finally:
     if 'connection' in locals() and connection.is_open:
         connection.close()
     cv2.destroyAllWindows()
+

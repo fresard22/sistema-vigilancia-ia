@@ -1,83 +1,58 @@
-# docker-compose.yml
-
 version: '3.8'
 
 services:
-  # Servicio 1: El broker de mensajes RabbitMQ
-  rabbitmq:
-    image: rabbitmq:3.9-management
-    hostname: rabbitmq # El nombre con el que otros servicios lo encontrarán
+  rabbitmq-1:
+    image: rabbitmq:3.11-management
     ports:
-      - "5672:5672"   # Puerto de la aplicación
-      - "15672:15672" # Interfaz web de gestión
+      - "15672:15672"
+      - "5671:5671"
+    volumes:
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./rabbitmq/certs:/etc/rabbitmq/certs
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    volumes:
-      - ./rabbitmq_certs:/etc/rabbitmq/certs:ro
-      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-  #db:
-    #image: postgres:13
-    #volumes:
-    #  - postgres_data:/var/lib/postgresql/data/
-   # environment:
-   #   - POSTGRES_USER=${DB_USER}
-   #   - POSTGRES_PASSWORD=${DB_PASS}
-   #   - POSTGRES_DB=${DB_NAME}
 
-  #central-server:
-    #build: ./servicios/serverCentral
-    #ports:
-    #  - "8000:8000"
-  # Servicio 2: El nodo que captura el video de la cámara
-  camera-node:
-    build: ./servicios/nodoCamara # Le dice a Compose que construya la imagen desde su Dockerfile
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+  camera-node-1:
+    build: ./servicios/nodoCamara
     environment:
-      # Pasamos las credenciales y el host de RabbitMQ
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      # Estas variables apuntan a rutas DENTRO del contenedor, por eso el volumen es necesario
+      - RABBITMQ_HOST=rabbitmq-1
+      - RABBITMQ_PORT=5671
+      - CA_CERT=/etc/rabbitmq/certs/ca_certificate.pem
+      - CLIENT_CERT=/etc/rabbitmq/certs/client_certificate.pem
+      - CLIENT_KEY=/etc/rabbitmq/certs/client_key.pem
+      - CAMERA_INDEX=0
     volumes:
-      - ./rabbitmq_certs:/app/rabbitmq_certs:ro
+      # >> ¡CAMBIO CLAVE! Añadir este volumen para que el cliente pueda encontrar los certificados
+      - ./rabbitmq:/etc/rabbitmq
     devices:
       - "/dev/video0:/dev/video0"
-
-  # Servicio 3: El nodo que procesa el video con IA
-  processing-node:
-    build: ./servicios/nodoProcesamiento
-    # No se exponen puertos, solo se comunica internamente
     depends_on:
-      rabbitmq:
+      rabbitmq-1:
         condition: service_healthy
-    deploy:
-      replicas: 1 # <-- ¡Aquí está la magia! Lanza 3 instancias de este servicio
+
+  processing-node-1:
+    build: ./servicios/nodoProcesamiento
     environment:
-      - "DISPLAY"
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASS=${RABBITMQ_PASS}
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      # Estas variables apuntan a rutas DENTRO del contenedor, por eso el volumen es necesario
+      - RABBITMQ_HOST=rabbitmq-1
+      - RABBITMQ_PORT=5671
+      - CA_CERT=/etc/rabbitmq/certs/ca_certificate.pem
+      - CLIENT_CERT=/etc/rabbitmq/certs/client_certificate.pem
+      - CLIENT_KEY=/etc/rabbitmq/certs/client_key.pem
+      - GDK_BACKEND=x11
+      - QT_QPA_PLATFORM=xcb
+      - DISPLAY=:0
+      - YOLO_CONFIG_DIR=/app/config # Opcional: para el warning de Ultralytics
     volumes:
-      - "/tmp/.X11-unix:/tmp/.X11-unix"
-      - ./rabbitmq_certs:/app/rabbitmq_certs:ro
-#volumes:
-#  postgres_data:
- #   depends_on:
-  #    rabbitmq:
-   #     condition: service_healthy
-   # environment:
-      # Las mismas variables para la conexión
-    #  - RABBITMQ_HOST=rabbitmq
-    # - RABBITMQ_USER=${RABBITMQ_USER}
-    #- RABBITMQ_PASS=${RABBITMQ_PASS}
-      # === PARA MOSTRAR LA VENTANA DE OPENCV (DEBUG) ===
-      # Esto es para sistemas Linux (Fedora). Permite que la GUI del contenedor
-      # se muestre en el escritorio del anfitrión.
-     # - "DISPLAY" 
-    #volumes:
-      # Comparte el socket de X11 para la comunicación de la GUI
-      #- "/tmp/.X11-unix:/tmp/.X11-unix"
+      # >> ¡CAMBIO CLAVE! Añadir este volumen para que el cliente pueda encontrar los certificados
+      - ./rabbitmq:/etc/rabbitmq
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy
