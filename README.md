@@ -42,7 +42,6 @@ Sigue estos pasos para levantar todo el sistema:
     ```bash
     cp .env.example .env
     ```
-    *(No es necesario modificarlo por ahora, ya que usa los valores por defecto que hemos configurado).*
 
 3.  **(Solo para Linux) Dar permisos para la GUI:**
     Para que la ventana de video del `processing-node` pueda aparecer en tu escritorio, ejecuta este comando en tu terminal. Esto solo se necesita hacer una vez por sesión.
