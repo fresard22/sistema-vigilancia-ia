@@ -71,13 +71,14 @@ if not connection:
 ## LÓGICA DE ALERTAS 
 ## ----------------------------------------------------------------
 def alert_callback(ch, method, properties, body):
+    camera_id = properties.app_id if properties and properties.app_id else "Cámara desconocida"
     try:
         #Decodificar el mensaje JSON
         alert_data = json.loads(body)
         alert_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(alert_data.get('timestamp')))
         
         # Formatear y escribir el log
-        log_message = f"ALERTA: Agresión detectada a las {alert_time}\n"
+        log_message = f"ALERTA: Agresión detectada a las {alert_time} desde {camera_id}\n"
         
         with open(LOG_FILE_PATH, 'a') as log_file:
             log_file.write(log_message)

@@ -99,6 +99,7 @@ print("--- [PROCESAMIENTO] ¡Conexión exitosa con RabbitMQ! ---")
 ## ----------------------------------------------------------------
 def callback(ch, method, properties, body):
     global tracked_people, frame_buffer, is_recording, recording_end_time, video_writer
+    camera_id = properties.app_id if properties and properties.app_id else "Cámara desconocida"
     
     #Lógica del modelo de IA, detectar y destacar personas en cuadro verde y agresiones en cuadro rojo
     nparr = np.frombuffer(body, np.uint8)
@@ -172,12 +173,18 @@ def callback(ch, method, properties, body):
                 }
                 alert_body = json.dumps(alert_message)
 
+                props = pika.BasicProperties(
+                    app_id=camera_id,
+                    delivery_mode=2,
+                    content_type='text'
+                )
+
                 #Publicamos el mensaje a una nueva cola dedicada para alertas
                 ch.basic_publish(
                     exchange='',
                     routing_key='alerts_log',
                     body=alert_body,
-                    properties=pika.BasicProperties(delivery_mode=2)
+                    properties=props
                 )
                 print(f"--- [ALERTA ENVIADA] Notificación enviada al servidor de logs. ---")
             except Exception as e:
@@ -189,7 +196,7 @@ def callback(ch, method, properties, body):
             
             #Crear un nombre de archivo único
             timestamp = time.strftime("%Y%m%d-%H%M%S")
-            filename = f"output/agresion-{timestamp}.avi"
+            filename = f"output/agresion-{timestamp}-{camera_id}.avi"
             
             #Inicializar el escritor de video
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
@@ -213,7 +220,7 @@ def callback(ch, method, properties, body):
                 print(f"--- [GRABACIÓN FINALIZADA] Video guardado. ---")
 
         #Mostramos el video en pantalla
-        cv2.imshow('Processing Node - Deteccion de Agresion V1', frame)
+        cv2.imshow(f"Frames recibidos de: '{camera_id}'", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             channel.stop_consuming()
     

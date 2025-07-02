@@ -13,6 +13,7 @@ import pika.credentials
 RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
 RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', 5671)) 
 CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', 0))
+CAMERA_ID = os.getenv('CAMERA_ID','Camara Notebook')
 
 CA_CERT_PATH = os.getenv('CA_CERT')
 CLIENT_CERT_PATH = os.getenv('CLIENT_CERT')
@@ -110,11 +111,18 @@ try:
         if not result:
             continue
 
+        props = pika.BasicProperties(
+            app_id=CAMERA_ID,
+            delivery_mode=2,
+            content_type='image/jpeg'
+        )
+
         #Publicar el mensaje
         channel.basic_publish(
             exchange='',
             routing_key='camera_frames',
-            body=buffer.tobytes())
+            body=buffer.tobytes(),
+            properties=props)
         
 
 
