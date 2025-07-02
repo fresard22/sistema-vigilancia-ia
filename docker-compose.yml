@@ -27,6 +27,7 @@ services:
       - CLIENT_CERT=/etc/rabbitmq/certs/client_certificate.pem
       - CLIENT_KEY=/etc/rabbitmq/certs/client_key.pem
       - CAMERA_INDEX=0
+      - TZ=America/Santiago
     volumes:
       # >> ¡CAMBIO CLAVE! Añadir este volumen para que el cliente pueda encontrar los certificados
       - ./rabbitmq:/etc/rabbitmq
@@ -49,6 +50,7 @@ services:
       - QT_QPA_PLATFORM=xcb
       - DISPLAY=:0
       - YOLO_CONFIG_DIR=/app/config # Opcional: para el warning de Ultralytics
+      - TZ=America/Santiago
     volumes:
       # >> ¡CAMBIO CLAVE! Añadir este volumen para que el cliente pueda encontrar los certificados
       - ./rabbitmq:/etc/rabbitmq
@@ -57,3 +59,22 @@ services:
     depends_on:
       rabbitmq-1:
         condition: service_healthy
+  log-server:
+    build: ./servicios/nodoServer # Asume que log_server.py está en la raíz o accesible por el build context
+    command: python log_server.py
+    environment:
+      # Usa las mismas variables para conectar de forma segura
+      - RABBITMQ_CONNECT_HOST=rabbitmq-1
+      - RABBITMQ_TLS_HOST=rabbitmq-1
+      - RABBITMQ_PORT=5671
+      - CA_CERT=/etc/rabbitmq/certs/ca_certificate.pem
+      - CLIENT_CERT=/etc/rabbitmq/certs/client_certificate.pem
+      - CLIENT_KEY=/etc/rabbitmq/certs/client_key.pem
+      - TZ=America/Santiago
+    volumes:
+      # Mapea los certificados para la conexión
+      - ./rabbitmq:/etc/rabbitmq
+      # Mapea la carpeta de logs para que el archivo aparezca en tu máquina
+      - ./logs:/app/logs
+    depends_on:
+      - rabbitmq-1

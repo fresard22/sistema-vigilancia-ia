@@ -8,40 +8,43 @@ import os
 from collections import defaultdict, deque
 import traceback
 import ssl
+import json
 
 print("--- [PROCESAMIENTO] Script iniciado. ---")
 
-# --- 1. Cargar el modelo de IA (YOLOv8) ---
+#Cargar el modelo de IA (YOLOv8) ---
 print("--- [PROCESAMIENTO] Cargando modelo de IA... ---")
 model = YOLO('yolov8n.pt')
 print("--- [PROCESAMIENTO] Modelo cargado exitosamente. ---")
 
-# ... (El resto de la configuración no cambia)
+#Parámetros para el modelo
 SPEED_THRESHOLD = 50
 PROXIMITY_THRESHOLD = 50
 tracked_people = defaultdict(lambda: {'last_pos': None, 'last_time': None, 'is_alert': False})
 
 # Parámetros del video a guardar
-VIDEO_FPS = 10.0  # Frames por segundo del video guardado
-VIDEO_WIDTH = 640 # Ancho del video
-VIDEO_HEIGHT = 480 # Alto del video
-RECORDING_SECONDS = 5 # Duración de la grabación después de la alerta
+VIDEO_FPS = 10.0
+VIDEO_WIDTH = 640
+VIDEO_HEIGHT = 480
+RECORDING_SECONDS = 5
 
-# Búfer para guardar los segundos previos al evento
+#Búfer para guardar los segundos previos al evento
 PRE_EVENT_BUFFER_SECONDS = 3
 buffer_size = int(VIDEO_FPS * PRE_EVENT_BUFFER_SECONDS)
 frame_buffer = deque(maxlen=buffer_size)
 
-# Variables para controlar el estado de la grabación
+#Variables para controlar el estado de la grabación
 is_recording = False
 recording_end_time = 0
 video_writer = None
 
-# Asegurarse de que la carpeta de salida exista
+#Asegurarse de que la carpeta de salida exista
 os.makedirs('output', exist_ok=True)
 print("--- [PROCESAMIENTO] Variables de grabación inicializadas. ---")
 
-# --- CONFIGURACIÓN Y CONEXIÓN ---
+## ----------------------------------------------------------------
+## CONFIGURACIÓN DE CONEXIÓN TLS
+## ----------------------------------------------------------------
 print("--- [PROCESAMIENTO] Leyendo configuración de entorno... ---")
 RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
 RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', 5671))
@@ -64,11 +67,13 @@ if RABBITMQ_PORT == 5671:
         print(f"--- [PROCESAMIENTO] Error fatal creando el contexto SSL: {e} ---")
         exit(1)
 
+## ----------------------------------------------------------------
+## LÓGICA DE CONEXIÓN CON REINTENTOS
+## ----------------------------------------------------------------
 connection = None
 attempts = 0
 print("--- [PROCESAMIENTO] Iniciando bucle de conexión... ---")
 
-# ... (El bucle de conexión con reintentos se mantiene igual)
 while attempts < 10 and not connection:
     try:
         params = pika.ConnectionParameters(
@@ -89,11 +94,13 @@ channel = connection.channel()
 
 print("--- [PROCESAMIENTO] ¡Conexión exitosa con RabbitMQ! ---")
 
-# --- FUNCIÓN CALLBACK ---
+## ----------------------------------------------------------------
+## LÓGICA DE DETECCIÓN, GRABACIÓN Y LOG
+## ----------------------------------------------------------------
 def callback(ch, method, properties, body):
     global tracked_people, frame_buffer, is_recording, recording_end_time, video_writer
     
-    # ... (toda tu lógica de IA se mantiene igual)
+    #Lógica del modelo de IA, detectar y destacar personas en cuadro verde y agresiones en cuadro rojo
     nparr = np.frombuffer(body, np.uint8)
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -156,42 +163,62 @@ def callback(ch, method, properties, body):
         for tid in stale_ids:
             del tracked_people[tid]
         
+        #Envío de alerta y grabación
         if alert_ids and not is_recording:
+            try:
+                alert_message = {
+                    "timestamp": time.time(),
+                    "alert_type": "AGGRESSION_DETECTED"
+                }
+                alert_body = json.dumps(alert_message)
+
+                #Publicamos el mensaje a una nueva cola dedicada para alertas
+                ch.basic_publish(
+                    exchange='',
+                    routing_key='alerts_log',
+                    body=alert_body,
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+                print(f"--- [ALERTA ENVIADA] Notificación enviada al servidor de logs. ---")
+            except Exception as e:
+                print(f"--- [ERROR] No se pudo enviar la alerta a RabbitMQ: {e} ---")
+
+            #Grabación
             is_recording = True
             recording_end_time = time.time() + RECORDING_SECONDS
             
-            # Crear un nombre de archivo único
+            #Crear un nombre de archivo único
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             filename = f"output/agresion-{timestamp}.avi"
             
-            # Inicializar el escritor de video
+            #Inicializar el escritor de video
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
             video_writer = cv2.VideoWriter(filename, fourcc, VIDEO_FPS, (VIDEO_WIDTH, VIDEO_HEIGHT))
             
             print(f"--- [ALERTA DETECTADA] Empezando a grabar en {filename} ---")
             
-            # Escribir los frames del búfer (el pre-evento)
+            #Escribir los frames del búfer (el pre-evento)
             for f in frame_buffer:
                 video_writer.write(f)
 
-        # Si estamos en modo grabación, seguimos escribiendo frames
+        #Si estamos en modo grabación, seguimos escribiendo frames
         if is_recording:
             video_writer.write(frame)
             
-            # Si ya pasaron los 5 segundos, detenemos la grabación
+            #Si ya pasaron los 5 segundos, detenemos la grabación
             if time.time() >= recording_end_time:
                 is_recording = False
                 video_writer.release()
                 video_writer = None
                 print(f"--- [GRABACIÓN FINALIZADA] Video guardado. ---")
 
-        # En un entorno de servidor real, esta línea debería ser removida o manejada de otra forma.
+        #Mostramos el video en pantalla
         cv2.imshow('Processing Node - Deteccion de Agresion V1', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             channel.stop_consuming()
     
     ch.basic_ack(delivery_tag=method.delivery_tag)
-# --- 6. Consumir mensajes de la cola (Esta parte no cambia) ---
+#Consumir mensajes de la cola
 channel.basic_consume(queue=QUEUE_NAME, on_message_callback=callback)
 try:
     channel.start_consuming()
@@ -205,4 +232,3 @@ finally:
     if video_writer is not None:
         video_writer.release()
         print("--- [PROCESAMIENTO] Grabación de video finalizada por cierre de script. ---")
-

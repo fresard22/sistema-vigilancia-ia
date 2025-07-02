@@ -2,13 +2,13 @@
   "users": [
     {
       "name": "camera-app-client",
-      "password": "ThisPasswordWillBeHashedAndIsNeverUsed123!",
+      "password": "contraseña1",
       "tags": ""
     },
     {
       "name": "admin",
       "password": "adminpass",
-      "tags": "administrator"
+      "tags": "administrador"
     }
   ],
   "vhosts": [
